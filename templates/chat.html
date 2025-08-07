@@ -531,9 +531,19 @@
             </div>
 
             <nav class="sidebar-nav">
-                <button class="nav-button active" onclick="newChat()" aria-label="Start New Chat">
+                <button class="nav-button active" id="new-chat-btn" onclick="newChat()" aria-label="Start New Chat">
                     <i class="fas fa-plus"></i> New Chat
                 </button>
+                
+                <!-- Chat Mode Toggle -->
+                <div class="mode-selector" style="margin-top: 15px;">
+                    <label style="font-size: 0.9em; color: #666; margin-bottom: 8px; display: block;">Chat Mode:</label>
+                    <select id="chat-mode" onchange="changeChatMode()" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--widget-bg);">
+                        <option value="general">💬 General Chat</option>
+                        <option value="codebase">💻 Codebase Analysis</option>
+                        <option value="image">🖼️ Image Analysis</option>
+                    </select>
+                </div>
             </nav>
 
             <div class="chat-sessions" id="chat-sessions" role="navigation" aria-label="Past Chat Sessions">
@@ -586,11 +596,20 @@
             <div class="chat-input" role="form">
                 <div class="input-container">
                     <div class="upload-button-wrapper">
-                        <input type="file" id="fileInput" accept=".docx,.jpg,.jpeg,.png,.gif,.pdf,.txt" onchange="uploadFile(event)" aria-label="Upload File">
+                        <input type="file" id="fileInput" accept=".docx,.jpg,.jpeg,.png,.gif,.pdf,.txt,.zip,.md" onchange="uploadFile(event)" aria-label="Upload File">
                         <button class="upload-btn" onclick="document.getElementById('fileInput').click()" title="Upload File">
                             <i class="fas fa-paperclip"></i>
                         </button>
                     </div>
+                    
+                    <!-- GitHub URL Input (hidden by default) -->
+                    <div class="github-input-wrapper" id="github-input" style="display: none; flex: 1; margin-right: 10px;">
+                        <input type="text" id="githubUrl" placeholder="Enter GitHub repository URL (e.g., username/repo)" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px;">
+                        <button onclick="uploadGithubRepo()" style="margin-left: 8px; padding: 8px 12px; background: var(--primary-color); color: white; border: none; border-radius: 6px; cursor: pointer;">
+                            <i class="fab fa-github"></i> Load
+                        </button>
+                    </div>
+                    
                     <input type="text" id="messageInput" placeholder="Type your message here..." onkeypress="handleKeyPress(event)" aria-label="Message input">
                     <button class="send-btn" id="sendBtn" onclick="sendMessage()" aria-label="Send message">
                         <i class="fas fa-paper-plane"></i>
@@ -603,6 +622,7 @@
     <script>
         let isLoading = false;
         let sidebarOpen = window.innerWidth > 768; // Initial state based on screen size
+        let currentChatMode = 'general';
 
         // Function to toggle sidebar visibility
         function toggleSidebar() {
@@ -654,6 +674,36 @@
                 overlay.addEventListener('transitionend', () => overlay.remove(), {once: true});
             }
         }
+        function changeChatMode() {
+            const modeSelect = document.getElementById('chat-mode');
+            currentChatMode = modeSelect.value;
+            
+            const githubInput = document.getElementById('github-input');
+            const messageInput = document.getElementById('messageInput');
+            const fileInput = document.getElementById('fileInput');
+            
+            // Update UI based on mode
+            if (currentChatMode === 'codebase') {
+                githubInput.style.display = 'flex';
+                messageInput.placeholder = 'Ask about the codebase...';
+                fileInput.accept = '.zip,.tar,.gz';
+                
+                // Show mode-specific welcome message
+                addMessage('assistant', '🔧 Codebase Analysis Mode activated! You can now:\n• Upload a ZIP file containing your code\n• Provide a GitHub repository URL\n• Ask questions about code structure and functionality');
+            } else if (currentChatMode === 'image') {
+                githubInput.style.display = 'none';
+                messageInput.placeholder = 'Upload an image and ask questions about it...';
+                fileInput.accept = '.jpg,.jpeg,.png,.gif,.webp,.bmp';
+                
+                addMessage('assistant', '🖼️ Image Analysis Mode activated! Upload an image and I\'ll help you analyze and understand its contents.');
+            } else {
+                githubInput.style.display = 'none';
+                messageInput.placeholder = 'Type your message here...';
+                fileInput.accept = '.docx,.pdf,.txt,.md,.jpg,.jpeg,.png,.gif';
+                
+                addMessage('assistant', '💬 General Chat Mode activated! You can upload documents, ask questions, and have general conversations.');
+            }
+        }
 
         function handleKeyPress(event) {
             if (event.key === 'Enter' && !event.shiftKey) {
@@ -677,15 +727,16 @@
             showTypingIndicator();
 
             try {
-                // Simulate API call delay for demonstration
-                await new Promise(resolve => setTimeout(resolve, 1500 + Math.random() * 1000));
 
                 const response = await fetch('/send_message', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ message: message })
+                    body: JSON.stringify({ 
+                        message: message,
+                        mode: currentChatMode 
+                    })
                 });
 
                 const data = await response.json();
@@ -760,6 +811,7 @@
 
             const formData = new FormData();
             formData.append('file', file);
+            formData.append('type', getUploadType(file.name));
 
             addMessage('user', `📎 Uploading: ${file.name}`);
             showTypingIndicator();
@@ -767,8 +819,6 @@
             updateSendButton();
 
             try {
-                // Simulate API call delay for demonstration
-                await new Promise(resolve => setTimeout(resolve, 2500 + Math.random() * 1000));
 
                 const response = await fetch('/upload_file', {
                     method: 'POST',
@@ -779,7 +829,9 @@
 
                 if (response.ok) {
                     let message = data.message;
-                    if (data.type === 'document') {
+                    if (data.type === 'codebase') {
+                        message += `<br><br><i>Processed ${data.files_processed || 0} code files in ${data.chunks || 0} chunks.</i>`;
+                    } else if (data.type === 'document') {
                         message += `<br><br><i>Processed ${data.chunks || 'some'} parts.</i>`;
                     } else if (data.type === 'image') {
                         message += `<br><br><i>Image Analysis: ${data.description || 'No description provided.'}</i>`;
@@ -797,6 +849,60 @@
                 isLoading = false;
                 updateSendButton();
                 fileInput.value = ''; // Clear the file input for next upload
+            }
+        }
+        
+        function getUploadType(filename) {
+            const ext = filename.toLowerCase().split('.').pop();
+            if (currentChatMode === 'codebase' && ['zip', 'tar', 'gz'].includes(ext)) {
+                return 'codebase';
+            } else if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(ext)) {
+                return 'image';
+            } else {
+                return 'document';
+            }
+        }
+        
+        async function uploadGithubRepo() {
+            const githubUrl = document.getElementById('githubUrl').value.trim();
+            
+            if (!githubUrl) {
+                alert('Please enter a GitHub repository URL');
+                return;
+            }
+            
+            addMessage('user', `🔗 Loading GitHub repository: ${githubUrl}`);
+            showTypingIndicator();
+            isLoading = true;
+            updateSendButton();
+            
+            try {
+                const response = await fetch('/upload_github', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ repo_url: githubUrl })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    let message = data.message;
+                    message += `<br><br><i>Processed ${data.files_processed || 0} code files in ${data.chunks || 0} chunks.</i>`;
+                    addMessage('assistant', message);
+                    document.getElementById('githubUrl').value = ''; // Clear input
+                } else {
+                    const errorMessage = data.error || 'GitHub repository processing failed.';
+                    addMessage('assistant', `Error: ${errorMessage}`);
+                }
+            } catch (error) {
+                console.error('GitHub upload error:', error);
+                addMessage('assistant', 'Failed to process GitHub repository. Please check the URL and try again.');
+            } finally {
+                hideTypingIndicator();
+                isLoading = false;
+                updateSendButton();
             }
         }
 
@@ -825,6 +931,11 @@
                         document.querySelectorAll('.session-item').forEach(item => item.classList.remove('active'));
                         // You'd typically add a new session item here and make it active
                         console.log('New session created:', data.session_id);
+                        
+                        // Reset chat mode to general
+                        document.getElementById('chat-mode').value = 'general';
+                        currentChatMode = 'general';
+                        changeChatMode();
                     }
                 })
                 .catch(error => console.error('Error creating new session:', error));
@@ -882,6 +993,9 @@
             // Event listener for real-time input change to enable/disable send button
             messageInput.addEventListener('input', updateSendButton);
             updateSendButton(); // Initial check for send button state
+            
+            // Initialize chat mode
+            changeChatMode();
         });
 
         // Add a listener for window resize to adjust sidebar behavior

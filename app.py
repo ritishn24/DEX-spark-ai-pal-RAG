@@ -2,6 +2,8 @@ import os
 import uuid
 import base64
 import requests
+import tempfile
+import shutil
 from datetime import datetime
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for, flash
 from werkzeug.utils import secure_filename
@@ -29,12 +31,17 @@ from utils.database import DatabaseManager
 from utils.document_processor import DocumentProcessor
 from utils.image_processor import ImageProcessor
 from utils.vector_store import VectorStore
+from utils.codebase_processor import CodebaseProcessor
+from utils.rate_limiter import rate_limit
+from utils.file_validator import FileValidator
  
 auth_manager = AuthManager()
 db_manager = DatabaseManager()
 doc_processor = DocumentProcessor()
 img_processor = ImageProcessor()
 vector_store = VectorStore()
+codebase_processor = CodebaseProcessor()
+file_validator = FileValidator()
  
 # ===============================
 # ✅ LLM Client (Vision-capable)
@@ -180,12 +187,14 @@ def chat():
     return render_template('chat.html', username=session['username'], chat_history=chat_history)
  
 @app.route('/send_message', methods=['POST'])
+@rate_limit
 def send_message():
     if 'user_id' not in session:
         return jsonify({'error': 'Not authenticated'}), 401
     try:
         data = request.get_json()
         user_message = data.get('message', '').strip()
+        chat_mode = data.get('mode', 'general')  # general, codebase, image
  
         db_manager.save_message(session['user_id'], session['session_id'], 'user', user_message)
  
@@ -193,16 +202,26 @@ def send_message():
         memory_context = "\n".join([f"{m['role'].capitalize()}: {m['message']}" for m in history[-10:]])
  
         vector_context = ""
-        if vector_store.collection_exists(session['session_id']):
-            relevant_docs = vector_store.search_documents(session['session_id'], user_message)
-            vector_context = "\n".join([doc.get('text', '') for doc in relevant_docs])
+        
+        # Different context retrieval based on chat mode
+        if chat_mode == 'codebase':
+            if vector_store.collection_exists(f"code_{session['session_id']}"):
+                relevant_docs = vector_store.search_codebase(f"code_{session['session_id']}", user_message)
+                vector_context = self._format_code_context(relevant_docs)
+        else:
+            if vector_store.collection_exists(session['session_id']):
+                relevant_docs = vector_store.search_documents(session['session_id'], user_message)
+                vector_context = "\n".join([doc.get('text', '') for doc in relevant_docs])
  
         full_context = f"""Chat History:
 {memory_context.strip()}
  
 Relevant Docs:
 {vector_context.strip()}"""
-        ai_response = llm_client.generate_response(user_message, full_context)
+        
+        # Customize system prompt based on mode
+        system_context = self._get_system_context(chat_mode)
+        ai_response = llm_client.generate_response(user_message, full_context, system_context=system_context)
  
         db_manager.save_message(session['user_id'], session['session_id'], 'assistant', ai_response)
  
@@ -215,23 +234,75 @@ Relevant Docs:
         print(f"[send_message] Error: {e}")
         return jsonify({'error': 'Failed to process message'}), 500
  
+def _format_code_context(self, relevant_docs):
+    """Format code context for better LLM understanding"""
+    context_parts = []
+    for doc in relevant_docs:
+        if doc.get('chunk_type') == 'structure':
+            context_parts.append(f"Project Structure:\n{doc.get('content', '')}")
+        else:
+            file_path = doc.get('file_path', 'unknown')
+            language = doc.get('language', 'text')
+            content = doc.get('content', '')
+            context_parts.append(f"File: {file_path} ({language})\n```{language}\n{content}\n```")
+    return "\n\n".join(context_parts)
+
+def _get_system_context(self, mode):
+    """Get system context based on chat mode"""
+    if mode == 'codebase':
+        return """You are a code analysis expert. Help users understand codebases, explain functionality, 
+        suggest improvements, and answer questions about code structure and implementation. 
+        Provide clear explanations with code examples when relevant."""
+    elif mode == 'image':
+        return """You are an image analysis expert. Describe images in detail, identify objects, 
+        people, text, and provide contextual information about what you see."""
+    else:
+        return """You are a helpful AI assistant. Answer questions based on the provided context 
+        and help users with their queries."""
+
 @app.route('/upload_file', methods=['POST'])
+@rate_limit
 def upload_file():
     if 'user_id' not in session:
         return jsonify({'error': 'Not authenticated'}), 401
     try:
         file = request.files.get('file')
+        upload_type = request.form.get('type', 'document')  # document, image, codebase
+        
         if not file or not file.filename:
             return jsonify({'error': 'No file uploaded'}), 400
  
         filename = secure_filename(file.filename or "uploaded_file")
         file_path = os.path.join(UPLOAD_FOLDER, filename)
         file.save(file_path)
+        
+        # Validate file
+        is_valid, error_msg, file_info = file_validator.validate_file(file_path, filename)
+        if not is_valid:
+            os.remove(file_path)
+            return jsonify({'error': error_msg}), 400
  
         result = {}
  
-        if filename.lower().endswith('.docx'):
-            processed_text = doc_processor.process_document(file_path)
+        if upload_type == 'codebase' and filename.lower().endswith('.zip'):
+            # Process codebase from ZIP
+            processed_chunks = codebase_processor.process_codebase(file_path, 'zip')
+            vector_store.add_codebase(f"code_{session['session_id']}", processed_chunks, filename)
+            result = {
+                'type': 'codebase',
+                'filename': filename,
+                'message': f'Codebase "{filename}" processed successfully!',
+                'chunks': len(processed_chunks),
+                'files_processed': len([c for c in processed_chunks if c.get('chunk_type') == 'code'])
+            }
+        elif file_info['extension'] in ['docx', 'pdf', 'txt', 'md']:
+            # Process document
+            if file_info['extension'] == 'docx':
+                processed_text = doc_processor.process_document(file_path)
+            else:
+                # Handle other document types
+                processed_text = self._process_other_documents(file_path, file_info['extension'])
+            
             vector_store.add_documents(session['session_id'], processed_text, filename)
             result = {
                 'type': 'document',
@@ -239,14 +310,9 @@ def upload_file():
                 'message': f'Document "{filename}" processed successfully!',
                 'chunks': len(processed_text)
             }
-        elif filename.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
-            with open(file_path, "rb") as img_file:
-                encoded = base64.b64encode(img_file.read()).decode("utf-8")
-            image_url = f"data:image/jpeg;base64,{encoded}"
-            ai_response = llm_client.generate_response(
-                "Describe this image. Identify any characters, people, or objects and give details about them.",
-                image_url=image_url
-            )
+        elif file_info['extension'] in ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp']:
+            # Process image
+            ai_response = img_processor.analyze_with_ai(file_path)
             result = {
                 'type': 'image',
                 'filename': filename,
@@ -254,14 +320,14 @@ def upload_file():
                 'message': f'Image "{filename}" analyzed successfully!'
             }
         else:
-            return jsonify({'error': 'Unsupported file type'}), 400
+            return jsonify({'error': f'Unsupported file type: {file_info["extension"]}'}), 400
  
         db_manager.save_document(
             session['user_id'],
             session['session_id'],
             filename,
-            file.content_type,
-            os.path.getsize(file_path)
+            file_info['mime_type'],
+            file_info['size']
         )
  
         os.remove(file_path)
@@ -270,6 +336,75 @@ def upload_file():
         print(f"[upload_file] Error: {e}")
         return jsonify({'error': 'Failed to process file'}), 500
  
+def _process_other_documents(self, file_path, extension):
+    """Process non-DOCX documents"""
+    try:
+        if extension in ['txt', 'md']:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            # Simple chunking for text files
+            chunks = []
+            sentences = content.split('\n\n')  # Split by paragraphs
+            
+            for i, sentence in enumerate(sentences):
+                if sentence.strip():
+                    embedding = doc_processor.get_embedding(sentence)
+                    chunks.append({
+                        'text': sentence.strip(),
+                        'original_text': sentence.strip(),
+                        'embedding': embedding
+                    })
+            
+            return chunks
+        elif extension == 'pdf':
+            # PDF processing would require additional library like PyPDF2
+            return [{'text': 'PDF processing not implemented yet', 'original_text': 'PDF processing not implemented yet', 'embedding': [0]*768}]
+        
+        return []
+    except Exception as e:
+        print(f"Error processing document: {str(e)}")
+        return []
+
+@app.route('/upload_github', methods=['POST'])
+@rate_limit
+def upload_github():
+    """Process GitHub repository"""
+    if 'user_id' not in session:
+        return jsonify({'error': 'Not authenticated'}), 401
+    
+    try:
+        data = request.get_json()
+        repo_url = data.get('repo_url', '').strip()
+        
+        if not repo_url:
+            return jsonify({'error': 'Repository URL is required'}), 400
+        
+        # Process GitHub repository
+        processed_chunks = codebase_processor.process_codebase(repo_url, 'github')
+        vector_store.add_codebase(f"code_{session['session_id']}", processed_chunks, repo_url)
+        
+        # Save to database
+        db_manager.save_document(
+            session['user_id'],
+            session['session_id'],
+            repo_url,
+            'application/x-git',
+            0  # Size not applicable for GitHub repos
+        )
+        
+        return jsonify({
+            'type': 'codebase',
+            'source': repo_url,
+            'message': f'Repository "{repo_url}" processed successfully!',
+            'chunks': len(processed_chunks),
+            'files_processed': len([c for c in processed_chunks if c.get('chunk_type') == 'code'])
+        })
+        
+    except Exception as e:
+        print(f"[upload_github] Error: {e}")
+        return jsonify({'error': f'Failed to process repository: {str(e)}'}), 500
+
 @app.route('/get_chat_sessions')
 def get_chat_sessions():
     if 'user_id' not in session:
@@ -304,6 +439,7 @@ def logout():
     if 'user_id' in session and 'session_id' in session:
         try:
             vector_store.delete_collection(session['session_id'])
+            vector_store.delete_collection(f"code_{session['session_id']}")
         except Exception as e:
             print(f"[logout] Cleanup error: {e}")
         session.clear()
@@ -318,6 +454,10 @@ def not_found(error):
 def internal_error(error):
     return jsonify({'error': 'Internal server error'}), 500
  
+@app.errorhandler(429)
+def rate_limit_exceeded(error):
+    return jsonify({'error': 'Rate limit exceeded. Please try again later.'}), 429
+
 if __name__ == '__main__':
     try:
         db_manager.init_database()

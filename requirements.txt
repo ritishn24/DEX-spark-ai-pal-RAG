@@ -13,3 +13,6 @@ werkzeug
 openai
 nomic
 einops
+GitPython
+python-magic
+python-magic-bin

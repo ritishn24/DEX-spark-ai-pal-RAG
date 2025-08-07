@@ -13,10 +13,10 @@ class LLMClient:
         
         self.openai_client = OpenAI(api_key=self.openai_api_key) if self.openai_api_key else None
 
-    def generate_response(self, user_message, context="", max_tokens=1000, temperature=0.1):
+    def generate_response(self, user_message, context="", system_context="", max_tokens=1000, temperature=0.1):
         """Try local LLM first, then fallback to OpenAI if needed"""
         try:
-            local_response = self._call_local_llm(user_message, context, max_tokens, temperature)
+            local_response = self._call_local_llm(user_message, context, system_context, max_tokens, temperature)
             if local_response:
                 return local_response
         except Exception as e:
@@ -24,7 +24,7 @@ class LLMClient:
 
         try:
             if self.openai_client:
-                openai_response = self._call_openai_llm(user_message, context, max_tokens, temperature)
+                openai_response = self._call_openai_llm(user_message, context, system_context, max_tokens, temperature)
                 if openai_response:
                     return openai_response
         except Exception as e:
@@ -32,16 +32,18 @@ class LLMClient:
 
         return "I'm sorry, I'm currently unable to process your request. Please try again later."
 
-    def _call_local_llm(self, user_message, context="", max_tokens=1000, temperature=0.1):
+    def _call_local_llm(self, user_message, context="", system_context="", max_tokens=1000, temperature=0.1):
         """Call local LLM server endpoint"""
         message = self._format_message_with_context(user_message, context)
+        
+        system_prompt = system_context or "You are a helpful AI assistant. You can answer questions, help with tasks, and provide information based on the context provided."
 
         payload = {
             "model": self.llm_model_path,
             "messages": [
                 {
                     "role": "system",
-                    "content": "You are a helpful AI assistant. You can answer questions, help with tasks, and provide information based on the context provided."
+                    "content": system_prompt
                 },
                 {
                     "role": "user",
@@ -70,19 +72,20 @@ class LLMClient:
 
         return None
 
-    def _call_openai_llm(self, user_message, context="", max_tokens=1000, temperature=0.1):
+    def _call_openai_llm(self, user_message, context="", system_context="", max_tokens=1000, temperature=0.1):
         """Call OpenAI GPT-3.5 Turbo using new SDK"""
         if not self.openai_client:
             return None
 
         message = self._format_message_with_context(user_message, context)
+        system_prompt = system_context or "You are a helpful AI assistant. You can answer questions, help with tasks, and provide information based on the context provided."
 
         response = self.openai_client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
                 {
                     "role": "system",
-                    "content": "You are a helpful AI assistant. You can answer questions, help with tasks, and provide information based on the context provided."
+                    "content": system_prompt
                 },
                 {
                     "role": "user",
