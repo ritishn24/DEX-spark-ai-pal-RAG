@@ -1,0 +1,15 @@
+Flask
+pymysql
+langchain
+langchain-huggingface
+nltk
+python-docx
+pymilvus
+requests
+uuid
+Pillow
+python-dotenv
+werkzeug
+openai
+nomic
+einops
