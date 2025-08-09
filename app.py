@@ -231,7 +231,18 @@ def send_message():
         system_context = _get_system_context(chat_mode)
         
         # Different context retrieval based on chat mode
-        if chat_mode == 'codebase':
+        if chat_mode == 'rag':
+            # RAG mode - search documents only
+            if vector_store.collection_exists(session['session_id']):
+                logger.info("Searching document collection for RAG...")
+                relevant_docs = vector_store.search_documents(session['session_id'], user_message)
+                vector_context = "\n".join([doc.get('text', '') for doc in relevant_docs])
+                logger.info(f"Found {len(relevant_docs)} relevant document chunks for RAG")
+            else:
+                logger.warning("No document collection found for RAG")
+                vector_context = "No documents have been uploaded yet. Please upload documents to use RAG functionality."
+        elif chat_mode == 'codebase':
+            # Codebase mode - search code collections
             if vector_store.collection_exists(f"code_{session['session_id']}"):
                 logger.info("Searching codebase collection...")
                 relevant_docs = vector_store.search_codebase(f"code_{session['session_id']}", user_message)
@@ -239,14 +250,10 @@ def send_message():
                 logger.info(f"Found {len(relevant_docs)} relevant code chunks")
             else:
                 logger.warning("No codebase collection found")
+                vector_context = "No codebase has been uploaded yet. Please upload a ZIP file or provide a GitHub URL."
         else:
-            if vector_store.collection_exists(session['session_id']):
-                logger.info("Searching document collection...")
-                relevant_docs = vector_store.search_documents(session['session_id'], user_message)
-                vector_context = "\n".join([doc.get('text', '') for doc in relevant_docs])
-                logger.info(f"Found {len(relevant_docs)} relevant document chunks")
-            else:
-                logger.warning("No document collection found")
+            # General chat mode - no document context
+            vector_context = ""
  
         full_context = f"""Chat History:
 {memory_context.strip()}
@@ -284,7 +291,18 @@ def _format_code_context(relevant_docs):
 
 def _get_system_context(mode):
     """Get system context based on chat mode"""
-    if mode == 'codebase':
+    if mode == 'rag':
+        return """You are a RAG (Retrieval-Augmented Generation) assistant. Your primary role is to answer questions based on the uploaded documents provided in the context. 
+        
+        IMPORTANT INSTRUCTIONS:
+        1. Always prioritize information from the provided document context
+        2. If the context contains relevant information, use it to answer the question
+        3. If the context doesn't contain relevant information, clearly state that the information is not available in the uploaded documents
+        4. Be specific about which document or section you're referencing when possible
+        5. Provide accurate, context-based responses and avoid making up information not present in the documents
+        
+        Format your responses clearly and cite the source material when relevant."""
+    elif mode == 'codebase':
         return """You are a code analysis expert. Help users understand codebases, explain functionality, 
         suggest improvements, and answer questions about code structure and implementation. 
         Provide clear explanations with code examples when relevant."""
@@ -292,8 +310,6 @@ def _get_system_context(mode):
         return """You are an image analysis expert. Describe images in detail, identify objects, 
         people, text, and provide contextual information about what you see."""
     else:
-        return """You are a helpful AI assistant. If context from documents is provided, use it to answer questions. 
-        If no relevant context is available, provide helpful general responses. Always be accurate and informative."""
 
 @app.route('/upload_file', methods=['POST'])
 @rate_limit
@@ -402,7 +418,11 @@ def _process_other_documents(file_path, extension):
             
             for i, paragraph in enumerate(paragraphs):
                 if paragraph.strip():
-                    embedding = doc_processor.get_embedding(paragraph.strip())
+                    try:
+                        embedding = doc_processor.get_embedding(paragraph.strip())
+                    except Exception as e:
+                        logger.error(f"Error generating embedding: {e}")
+                        continue
                     if embedding:
                         chunks.append({
                             'text': paragraph.strip(),
@@ -420,10 +440,44 @@ def _process_other_documents(file_path, extension):
 def _process_pdf_document(file_path):
     """Process PDF documents"""
     try:
-        # For now, return a placeholder - you can integrate PyPDF2 or similar
+        import PyPDF2
+        chunks = []
+        
+        with open(file_path, 'rb') as file:
+            pdf_reader = PyPDF2.PdfReader(file)
+            text_content = ""
+            
+            for page in pdf_reader.pages:
+                text_content += page.extract_text() + "\n"
+        
+        if text_content.strip():
+            # Split into paragraphs
+            paragraphs = text_content.split('\n\n')
+            
+            for paragraph in paragraphs:
+                if paragraph.strip() and len(paragraph.strip()) > 50:  # Skip very short paragraphs
+                    try:
+                        embedding = doc_processor.get_embedding(paragraph.strip())
+                        if embedding:
+                            chunks.append({
+                                'text': paragraph.strip(),
+                                'original_text': paragraph.strip(),
+                                'embedding': embedding
+                            })
+                    except Exception as e:
+                        logger.error(f"Error generating embedding for PDF chunk: {e}")
+                        continue
+        
+        return chunks
+    except ImportError:
+        logger.warning("PyPDF2 not installed, using placeholder for PDF")
         chunks = []
         placeholder_text = "PDF processing is not fully implemented yet. Please convert to TXT or DOCX format."
-        embedding = doc_processor.get_embedding(placeholder_text)
+        try:
+            embedding = doc_processor.get_embedding(placeholder_text)
+        except Exception as e:
+            logger.error(f"Error generating placeholder embedding: {e}")
+            return []
         if embedding:
             chunks.append({
                 'text': placeholder_text,

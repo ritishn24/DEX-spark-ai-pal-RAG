@@ -545,6 +545,7 @@
                     <label style="font-size: 0.9em; color: #666; margin-bottom: 8px; display: block;">Chat Mode:</label>
                     <select id="chat-mode" onchange="changeChatMode()" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--widget-bg);">
                         <option value="general">💬 General Chat</option>
+                        <option value="rag">📚 RAG (Document Chat)</option>
                         <option value="codebase">💻 Codebase Analysis</option>
                         <option value="image">🖼️ Image Analysis</option>
                     </select>
@@ -688,7 +689,14 @@
             const fileInput = document.getElementById('fileInput');
             
             // Update UI based on mode
-            if (currentChatMode === 'codebase') {
+            if (currentChatMode === 'rag') {
+                githubInput.style.display = 'none';
+                messageInput.placeholder = 'Upload documents and ask questions about them...';
+                fileInput.accept = '.docx,.pdf,.txt,.md,.doc';
+                
+                // Show mode-specific welcome message
+                addMessage('assistant', '📚 RAG (Document Chat) Mode activated! You can now:\n• Upload documents (PDF, DOCX, TXT, MD)\n• Ask questions about the uploaded content\n• Get context-aware responses based on your documents');
+            } else if (currentChatMode === 'codebase') {
                 githubInput.style.display = 'flex';
                 messageInput.placeholder = 'Ask about the codebase...';
                 fileInput.accept = '.zip,.tar,.gz';
@@ -706,7 +714,7 @@
                 messageInput.placeholder = 'Type your message here...';
                 fileInput.accept = '.docx,.pdf,.txt,.md,.jpg,.jpeg,.png,.gif';
                 
-                addMessage('assistant', '💬 General Chat Mode activated! You can upload documents, ask questions, and have general conversations.');
+                addMessage('assistant', '💬 General Chat Mode activated! Have general conversations without document context.');
             }
         }
 
@@ -859,7 +867,9 @@
         
         function getUploadType(filename) {
             const ext = filename.toLowerCase().split('.').pop();
-            if (currentChatMode === 'codebase' && ['zip', 'tar', 'gz'].includes(ext)) {
+            if (currentChatMode === 'rag' && ['docx', 'pdf', 'txt', 'md', 'doc'].includes(ext)) {
+                return 'document';
+            } else if (currentChatMode === 'codebase' && ['zip', 'tar', 'gz'].includes(ext)) {
                 return 'codebase';
             } else if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(ext)) {
                 return 'image';

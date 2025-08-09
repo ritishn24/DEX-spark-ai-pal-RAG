@@ -211,9 +211,11 @@ class VectorStore:
             return []
 
     def search_documents(self, session_id, query_text, top_k=5):
+        """Search documents with query"""
         try:
             collection_name = self._format_collection_name(session_id)
             if not utility.has_collection(collection_name):
+                print(f"Collection {collection_name} does not exist")
                 return []
 
             collection = Collection(collection_name)
@@ -224,7 +226,7 @@ class VectorStore:
             query_embedding = doc_processor.get_embedding(query_text)
 
             if not query_embedding:
-                logger.warning("Failed to generate query embedding for document search")
+                print("Failed to generate query embedding for document search")
                 return []
 
             search_params = {
@@ -249,10 +251,10 @@ class VectorStore:
                     'score': result.score
                 })
 
-            logger.info(f"Found {len(documents)} relevant document chunks")
+            print(f"Found {len(documents)} relevant document chunks")
             return documents
         except Exception as e:
-            logger.error(f"❌ Error searching documents: {str(e)}")
+            print(f"❌ Error searching documents: {str(e)}")
             return []
 
     def delete_collection(self, session_id):

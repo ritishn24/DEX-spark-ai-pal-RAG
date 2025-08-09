@@ -109,10 +109,12 @@ class DocumentProcessor:
         """Get embedding for text"""
         try:
             if not self.embeddings:
-                logger.error("No embedding model available")
+                print("No embedding model available")
                 return None
-            embedding = self.embeddings.encode(text)
+            
+            # Use the SentenceTransformer model's encode method
+            embedding = self.embeddings.encode([text])[0]  # Get first (and only) embedding
             return self.normalize_embedding(embedding)
         except Exception as e:
-            logger.error(f"Error getting embedding: {str(e)}")
+            print(f"Error getting embedding: {str(e)}")
             return None
