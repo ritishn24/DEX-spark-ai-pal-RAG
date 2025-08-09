@@ -471,6 +471,11 @@
             30% { transform: translateY(-6px); }
         }
 
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
         /* Responsive adjustments */
         @media (max-width: 768px) {
             .container {
@@ -976,6 +981,17 @@
             }
         }
 
+        function showUploadProgress(message) {
+            const progressDiv = document.getElementById('upload-progress');
+            const statusSpan = document.getElementById('upload-status');
+            statusSpan.textContent = message;
+            progressDiv.style.display = 'block';
+        }
+        
+        function hideUploadProgress() {
+            document.getElementById('upload-progress').style.display = 'none';
+        }
+
         // Initialize on page load
         document.addEventListener('DOMContentLoaded', function() {
             const messageInput = document.getElementById('messageInput');
@@ -996,6 +1012,9 @@
             
             // Initialize chat mode
             changeChatMode();
+            
+            // Check LLM status
+            checkLLMStatus();
         });
 
         // Add a listener for window resize to adjust sidebar behavior

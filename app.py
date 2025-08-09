@@ -15,6 +15,12 @@ from openai.types.chat import (
     ChatCompletionSystemMessageParam,
     ChatCompletionUserMessageParam
 )
+import traceback
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
  
 # Load environment variables
 load_dotenv()
@@ -52,32 +58,35 @@ class LLMClient:
         self.llm_model_path = os.getenv('LLM_MODEL_PATH', '/root/.cache/huggingface/')
         self.openai_api_key = os.getenv('OPENAI_API_KEY')
         self.openai_client = OpenAI(api_key=self.openai_api_key) if self.openai_api_key else None
+        logger.info(f"LLM Client initialized - OpenAI: {'Available' if self.openai_client else 'Not Available'}")
+        logger.info(f"Local LLM URL: {self.llm_server_url}")
  
-    def generate_response(self, user_message, context="", image_url=None, max_tokens=10000, temperature=0.1):
+    def generate_response(self, user_message, context="", image_url=None, max_tokens=1000, temperature=0.1, system_context=""):
+        logger.info(f"Generating response for message: {user_message[:100]}...")
+        logger.info(f"Context length: {len(context)}")
+        
         try:
-            local_response = self._call_local_llm(user_message, context, image_url, max_tokens, temperature)
+            local_response = self._call_local_llm(user_message, context, image_url, max_tokens, temperature, system_context)
             if local_response:
+                logger.info("✅ Local LLM response successful")
                 return local_response
         except Exception as e:
-            print(f"[Local LLM Error] {e}")
+            logger.error(f"[Local LLM Error] {e}")
  
         try:
             if not self.openai_client:
                 raise ValueError("OpenAI client is not initialized")
-            return self._call_openai_gpt4o(user_message, context, image_url, max_tokens, temperature)
+            response = self._call_openai_gpt4o(user_message, context, image_url, max_tokens, temperature, system_context)
+            logger.info("✅ OpenAI GPT-4o response successful")
+            return response
         except Exception as e:
-            print(f"[OpenAI GPT-4o Error] {e}")
+            logger.error(f"[OpenAI GPT-4o Error] {e}")
  
+        logger.error("❌ All LLM options failed")
         return "I'm sorry, I'm currently unable to process your request. Please try again later."
  
-    def _call_local_llm(self, user_message, context="", image_url=None, max_tokens=10000, temperature=0.1):
-        system_prompt = (
-            "You are a helpful assistant. "
-            "Answer only based on the document chunks provided in the context. "
-            "If the answer is not clearly present in the context, respond with: "
-            "\"This information is not found in the uploaded document.\" "
-            "Do not use any external knowledge."
-        )
+    def _call_local_llm(self, user_message, context="", image_url=None, max_tokens=1000, temperature=0.1, system_context=""):
+        system_prompt = system_context or "You are a helpful AI assistant. Provide accurate and helpful responses based on the context provided."
  
         if image_url:
             message_content = [
@@ -97,21 +106,15 @@ class LLMClient:
             "temperature": temperature
         }
  
-        response = requests.post(self.llm_server_url, json=payload, timeout=60)
+        response = requests.post(self.llm_server_url, json=payload, timeout=30)
         if response.status_code == 200:
             data = response.json()
             return data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
-        print(f"[Local LLM] HTTP {response.status_code} - {response.text}")
+        logger.error(f"[Local LLM] HTTP {response.status_code} - {response.text}")
         return None
  
-    def _call_openai_gpt4o(self, user_message, context="", image_url=None, max_tokens=1000, temperature=0.1):
-        system_prompt = (
-            "You are a helpful assistant. "
-            "Answer only based on the document chunks provided in the context. "
-            "If the answer is not clearly present in the context, respond with: "
-            "\"This information is not found in the uploaded document.\" "
-            "Do not use any external knowledge."
-        )
+    def _call_openai_gpt4o(self, user_message, context="", image_url=None, max_tokens=1000, temperature=0.1, system_context=""):
+        system_prompt = system_context or "You are a helpful AI assistant. Provide accurate and helpful responses based on the context provided."
  
         messages: list[ChatCompletionMessageParam] = [
             ChatCompletionSystemMessageParam(role="system", content=system_prompt)
@@ -132,7 +135,7 @@ class LLMClient:
             ))
  
         response = self.openai_client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-3.5-turbo",
             messages=messages,
             max_tokens=max_tokens,
             temperature=temperature
@@ -141,6 +144,27 @@ class LLMClient:
  
     def _format_message_with_context(self, user_message, context=""):
         return f"Context:\n{context}\n\nUser Question: {user_message}" if context.strip() else user_message
+    
+    def test_connections(self):
+        """Test both local and OpenAI connections"""
+        status = {"local": False, "openai": False}
+        
+        # Test local LLM
+        try:
+            test_response = self._call_local_llm("Hello", max_tokens=10)
+            status["local"] = bool(test_response)
+        except:
+            pass
+            
+        # Test OpenAI
+        try:
+            if self.openai_client:
+                test_response = self._call_openai_gpt4o("Hello", max_tokens=10)
+                status["openai"] = bool(test_response)
+        except:
+            pass
+            
+        return status
  
 llm_client = LLMClient()
  
@@ -195,6 +219,8 @@ def send_message():
         data = request.get_json()
         user_message = data.get('message', '').strip()
         chat_mode = data.get('mode', 'general')  # general, codebase, image
+        
+        logger.info(f"Processing message in {chat_mode} mode: {user_message[:50]}...")
  
         db_manager.save_message(session['user_id'], session['session_id'], 'user', user_message)
  
@@ -202,16 +228,25 @@ def send_message():
         memory_context = "\n".join([f"{m['role'].capitalize()}: {m['message']}" for m in history[-10:]])
  
         vector_context = ""
+        system_context = _get_system_context(chat_mode)
         
         # Different context retrieval based on chat mode
         if chat_mode == 'codebase':
             if vector_store.collection_exists(f"code_{session['session_id']}"):
+                logger.info("Searching codebase collection...")
                 relevant_docs = vector_store.search_codebase(f"code_{session['session_id']}", user_message)
-                vector_context = self._format_code_context(relevant_docs)
+                vector_context = _format_code_context(relevant_docs)
+                logger.info(f"Found {len(relevant_docs)} relevant code chunks")
+            else:
+                logger.warning("No codebase collection found")
         else:
             if vector_store.collection_exists(session['session_id']):
+                logger.info("Searching document collection...")
                 relevant_docs = vector_store.search_documents(session['session_id'], user_message)
                 vector_context = "\n".join([doc.get('text', '') for doc in relevant_docs])
+                logger.info(f"Found {len(relevant_docs)} relevant document chunks")
+            else:
+                logger.warning("No document collection found")
  
         full_context = f"""Chat History:
 {memory_context.strip()}
@@ -219,8 +254,7 @@ def send_message():
 Relevant Docs:
 {vector_context.strip()}"""
         
-        # Customize system prompt based on mode
-        system_context = self._get_system_context(chat_mode)
+        logger.info(f"Full context length: {len(full_context)}")
         ai_response = llm_client.generate_response(user_message, full_context, system_context=system_context)
  
         db_manager.save_message(session['user_id'], session['session_id'], 'assistant', ai_response)
@@ -231,10 +265,11 @@ Relevant Docs:
             'timestamp': datetime.now().isoformat()
         })
     except Exception as e:
-        print(f"[send_message] Error: {e}")
+        logger.error(f"[send_message] Error: {e}")
+        logger.error(traceback.format_exc())
         return jsonify({'error': 'Failed to process message'}), 500
  
-def _format_code_context(self, relevant_docs):
+def _format_code_context(relevant_docs):
     """Format code context for better LLM understanding"""
     context_parts = []
     for doc in relevant_docs:
@@ -247,7 +282,7 @@ def _format_code_context(self, relevant_docs):
             context_parts.append(f"File: {file_path} ({language})\n```{language}\n{content}\n```")
     return "\n\n".join(context_parts)
 
-def _get_system_context(self, mode):
+def _get_system_context(mode):
     """Get system context based on chat mode"""
     if mode == 'codebase':
         return """You are a code analysis expert. Help users understand codebases, explain functionality, 
@@ -257,8 +292,8 @@ def _get_system_context(self, mode):
         return """You are an image analysis expert. Describe images in detail, identify objects, 
         people, text, and provide contextual information about what you see."""
     else:
-        return """You are a helpful AI assistant. Answer questions based on the provided context 
-        and help users with their queries."""
+        return """You are a helpful AI assistant. If context from documents is provided, use it to answer questions. 
+        If no relevant context is available, provide helpful general responses. Always be accurate and informative."""
 
 @app.route('/upload_file', methods=['POST'])
 @rate_limit
@@ -271,6 +306,8 @@ def upload_file():
         
         if not file or not file.filename:
             return jsonify({'error': 'No file uploaded'}), 400
+            
+        logger.info(f"Processing file upload: {file.filename}, type: {upload_type}")
  
         filename = secure_filename(file.filename or "uploaded_file")
         file_path = os.path.join(UPLOAD_FOLDER, filename)
@@ -280,14 +317,19 @@ def upload_file():
         is_valid, error_msg, file_info = file_validator.validate_file(file_path, filename)
         if not is_valid:
             os.remove(file_path)
+            logger.error(f"File validation failed: {error_msg}")
             return jsonify({'error': error_msg}), 400
+            
+        logger.info(f"File validated successfully: {file_info}")
  
         result = {}
  
         if upload_type == 'codebase' and filename.lower().endswith('.zip'):
             # Process codebase from ZIP
+            logger.info("Processing codebase from ZIP...")
             processed_chunks = codebase_processor.process_codebase(file_path, 'zip')
             vector_store.add_codebase(f"code_{session['session_id']}", processed_chunks, filename)
+            logger.info(f"Added {len(processed_chunks)} codebase chunks")
             result = {
                 'type': 'codebase',
                 'filename': filename,
@@ -295,15 +337,23 @@ def upload_file():
                 'chunks': len(processed_chunks),
                 'files_processed': len([c for c in processed_chunks if c.get('chunk_type') == 'code'])
             }
-        elif file_info['extension'] in ['docx', 'pdf', 'txt', 'md']:
+        elif file_info['extension'] in ['docx', 'pdf', 'txt', 'md', 'doc']:
             # Process document
+            logger.info(f"Processing document: {file_info['extension']}")
             if file_info['extension'] == 'docx':
                 processed_text = doc_processor.process_document(file_path)
+            elif file_info['extension'] == 'pdf':
+                processed_text = _process_pdf_document(file_path)
             else:
                 # Handle other document types
-                processed_text = self._process_other_documents(file_path, file_info['extension'])
+                processed_text = _process_other_documents(file_path, file_info['extension'])
             
+            if not processed_text:
+                logger.error("No text extracted from document")
+                return jsonify({'error': 'Could not extract text from document'}), 400
+                
             vector_store.add_documents(session['session_id'], processed_text, filename)
+            logger.info(f"Added {len(processed_text)} document chunks")
             result = {
                 'type': 'document',
                 'filename': filename,
@@ -312,6 +362,7 @@ def upload_file():
             }
         elif file_info['extension'] in ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp']:
             # Process image
+            logger.info("Processing image...")
             ai_response = img_processor.analyze_with_ai(file_path)
             result = {
                 'type': 'image',
@@ -320,6 +371,7 @@ def upload_file():
                 'message': f'Image "{filename}" analyzed successfully!'
             }
         else:
+            logger.error(f"Unsupported file type: {file_info['extension']}")
             return jsonify({'error': f'Unsupported file type: {file_info["extension"]}'}), 400
  
         db_manager.save_document(
@@ -333,10 +385,11 @@ def upload_file():
         os.remove(file_path)
         return jsonify(result)
     except Exception as e:
-        print(f"[upload_file] Error: {e}")
+        logger.error(f"[upload_file] Error: {e}")
+        logger.error(traceback.format_exc())
         return jsonify({'error': 'Failed to process file'}), 500
  
-def _process_other_documents(self, file_path, extension):
+def _process_other_documents(file_path, extension):
     """Process non-DOCX documents"""
     try:
         if extension in ['txt', 'md']:
@@ -345,25 +398,41 @@ def _process_other_documents(self, file_path, extension):
             
             # Simple chunking for text files
             chunks = []
-            sentences = content.split('\n\n')  # Split by paragraphs
+            paragraphs = content.split('\n\n')  # Split by paragraphs
             
-            for i, sentence in enumerate(sentences):
-                if sentence.strip():
-                    embedding = doc_processor.get_embedding(sentence)
-                    chunks.append({
-                        'text': sentence.strip(),
-                        'original_text': sentence.strip(),
-                        'embedding': embedding
-                    })
+            for i, paragraph in enumerate(paragraphs):
+                if paragraph.strip():
+                    embedding = doc_processor.get_embedding(paragraph.strip())
+                    if embedding:
+                        chunks.append({
+                            'text': paragraph.strip(),
+                            'original_text': paragraph.strip(),
+                            'embedding': embedding
+                        })
             
             return chunks
-        elif extension == 'pdf':
-            # PDF processing would require additional library like PyPDF2
-            return [{'text': 'PDF processing not implemented yet', 'original_text': 'PDF processing not implemented yet', 'embedding': [0]*768}]
         
         return []
     except Exception as e:
-        print(f"Error processing document: {str(e)}")
+        logger.error(f"Error processing document: {str(e)}")
+        return []
+
+def _process_pdf_document(file_path):
+    """Process PDF documents"""
+    try:
+        # For now, return a placeholder - you can integrate PyPDF2 or similar
+        chunks = []
+        placeholder_text = "PDF processing is not fully implemented yet. Please convert to TXT or DOCX format."
+        embedding = doc_processor.get_embedding(placeholder_text)
+        if embedding:
+            chunks.append({
+                'text': placeholder_text,
+                'original_text': placeholder_text,
+                'embedding': embedding
+            })
+        return chunks
+    except Exception as e:
+        logger.error(f"Error processing PDF: {str(e)}")
         return []
 
 @app.route('/upload_github', methods=['POST'])
@@ -381,8 +450,10 @@ def upload_github():
             return jsonify({'error': 'Repository URL is required'}), 400
         
         # Process GitHub repository
+        logger.info(f"Processing GitHub repository: {repo_url}")
         processed_chunks = codebase_processor.process_codebase(repo_url, 'github')
         vector_store.add_codebase(f"code_{session['session_id']}", processed_chunks, repo_url)
+        logger.info(f"Added {len(processed_chunks)} GitHub codebase chunks")
         
         # Save to database
         db_manager.save_document(
@@ -402,7 +473,8 @@ def upload_github():
         })
         
     except Exception as e:
-        print(f"[upload_github] Error: {e}")
+        logger.error(f"[upload_github] Error: {e}")
+        logger.error(traceback.format_exc())
         return jsonify({'error': f'Failed to process repository: {str(e)}'}), 500
 
 @app.route('/get_chat_sessions')
@@ -413,7 +485,7 @@ def get_chat_sessions():
         sessions = db_manager.get_user_sessions(session['user_id'])
         return jsonify(sessions)
     except Exception as e:
-        print(f"[get_chat_sessions] Error: {e}")
+        logger.error(f"[get_chat_sessions] Error: {e}")
         return jsonify({'error': 'Failed to get chat sessions'}), 500
  
 @app.route('/load_session/<session_id>')
@@ -424,7 +496,7 @@ def load_session(session_id):
         messages = db_manager.get_session_messages(session['user_id'], session_id)
         return jsonify(messages)
     except Exception as e:
-        print(f"[load_session] Error: {e}")
+        logger.error(f"[load_session] Error: {e}")
         return jsonify({'error': 'Failed to load session'}), 500
  
 @app.route('/new_session')
@@ -441,7 +513,7 @@ def logout():
             vector_store.delete_collection(session['session_id'])
             vector_store.delete_collection(f"code_{session['session_id']}")
         except Exception as e:
-            print(f"[logout] Cleanup error: {e}")
+            logger.error(f"[logout] Cleanup error: {e}")
         session.clear()
         flash('Logged out successfully!', 'success')
     return redirect(url_for('login'))
@@ -458,12 +530,46 @@ def internal_error(error):
 def rate_limit_exceeded(error):
     return jsonify({'error': 'Rate limit exceeded. Please try again later.'}), 429
 
+@app.route('/health')
+def health_check():
+    """Health check endpoint"""
+    try:
+        # Test database connection
+        db_status = "ok"
+        try:
+            db_manager.get_connection().close()
+        except:
+            db_status = "error"
+        
+        # Test vector store connection
+        vector_status = "ok"
+        try:
+            vector_store.connect_to_milvus()
+        except:
+            vector_status = "error"
+        
+        # Test LLM connections
+        llm_status = llm_client.test_connections()
+        
+        return jsonify({
+            'status': 'healthy',
+            'database': db_status,
+            'vector_store': vector_status,
+            'llm_local': llm_status.get('local', False),
+            'llm_openai': llm_status.get('openai', False)
+        })
+    except Exception as e:
+        return jsonify({'status': 'unhealthy', 'error': str(e)}), 500
+
 if __name__ == '__main__':
     try:
         db_manager.init_database()
-        print("Database initialized successfully!")
+        logger.info("Database initialized successfully!")
+        
+        # Test LLM connections on startup
+        llm_status = llm_client.test_connections()
+        logger.info(f"LLM Status - Local: {llm_status['local']}, OpenAI: {llm_status['openai']}")
+        
     except Exception as e:
-        print(f"Database initialization error: {str(e)}")
+        logger.error(f"Database initialization error: {str(e)}")
     app.run(debug=os.getenv('DEBUG', 'true').lower() == 'true', host='0.0.0.0', port=5000)
-   
- 

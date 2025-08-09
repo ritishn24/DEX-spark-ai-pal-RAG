@@ -224,6 +224,7 @@ class VectorStore:
             query_embedding = doc_processor.get_embedding(query_text)
 
             if not query_embedding:
+                logger.warning("Failed to generate query embedding for document search")
                 return []
 
             search_params = {
@@ -248,9 +249,10 @@ class VectorStore:
                     'score': result.score
                 })
 
+            logger.info(f"Found {len(documents)} relevant document chunks")
             return documents
         except Exception as e:
-            print(f"❌ Error searching documents: {str(e)}")
+            logger.error(f"❌ Error searching documents: {str(e)}")
             return []
 
     def delete_collection(self, session_id):

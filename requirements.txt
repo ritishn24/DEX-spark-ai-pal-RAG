@@ -16,3 +16,8 @@ einops
 GitPython
 python-magic
 python-magic-bin
+numpy
+sentence-transformers
+transformers
+torch
+faiss-cpu

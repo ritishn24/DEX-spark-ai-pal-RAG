@@ -108,7 +108,11 @@ class DocumentProcessor:
     def get_embedding(self, text):
         """Get embedding for text"""
         try:
-            return self.normalize_embedding(self.embeddings.embed_query(text))
+            if not self.embeddings:
+                logger.error("No embedding model available")
+                return None
+            embedding = self.embeddings.encode(text)
+            return self.normalize_embedding(embedding)
         except Exception as e:
-            print(f"Error getting embedding: {str(e)}")
+            logger.error(f"Error getting embedding: {str(e)}")
             return None
