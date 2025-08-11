@@ -3,18 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Insight Bot - Advanced Chat</title>
+    <title>Vertex - Advanced Chat</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
         :root {
             /* Color Palette */
-            --primary-color: #6a5acd; /* Royal Purple */
-            --primary-dark: #5140b0;
+            --primary-color: #695acd; /* Royal Purple */
+            --primary-dark: #615896;
             --accent-color: #8a2be2; /* Blue Violet for highlights */
-            --secondary-bg: #f0f2f5; /* Light Gray for background */
-            --widget-bg: #ffffff; /* White for main panels */
-            --text-color-dark: #333;
+            --secondary-bg: #06090eab; /* Light Gray for background */
+            --widget-bg: #ffffff77; /* White for main panels */
+            --text-color-dark: #222222;
             --text-color-light: #fff;
             --border-color: #e0e0e0;
             --error-color: #e74c3c;
@@ -72,51 +72,59 @@
             background: var(--widget-bg);
             display: flex;
             flex-direction: column;
-            transition: all 0.4s ease-in-out;
+            transition: width 0.4s ease-in-out; /* MODIFIED: transition width */
             border-right: 1px solid var(--border-color);
             flex-shrink: 0;
-            position: relative; /* For toggle button */
-            z-index: 100; /* Ensure it's above main content on mobile */
+            position: relative;
+            z-index: 100;
         }
 
+        /* MODIFIED: Sidebar collapse behavior */
         .sidebar.collapsed {
-            width: 0;
-            overflow: hidden;
-            transform: translateX(-100%);
+            width: 80px; /* Collapse to a smaller width to keep button visible */
+        }
+        
+        .sidebar.collapsed > *:not(.sidebar-toggle) {
+            display: none; /* Hide everything in the sidebar except the toggle button */
         }
 
+
+        /* Single Sidebar Toggle Button Style */
         .sidebar-toggle {
-            position: absolute;
+            position: absolute; 
             top: var(--spacing-md);
-            right: var(--spacing-md);
+            right: var(--spacing-md); /* Position on top-right of the open sidebar */
             background: none;
             border: none;
-            font-size: 24px;
-            cursor: pointer;
-            color: #777;
-            transition: color 0.3s ease;
-            outline: none;
-            z-index: 10;
-        }
-        .sidebar-toggle:hover {
-            color: var(--primary-color);
-        }
-
-        /* Toggle button when sidebar is collapsed (on desktop) */
-        .sidebar.collapsed + .main-content .sidebar-toggle {
-            left: var(--spacing-md); /* Moves to main-content area */
-            right: auto;
-            color: var(--primary-color);
-            background: var(--widget-bg);
-            border-radius: 50%;
             width: 40px;
             height: 40px;
             display: flex;
             align-items: center;
             justify-content: center;
-            box-shadow: var(--shadow-light);
-            z-index: 101; /* Keep it above other elements in main content */
+            font-size: 24px;
+            cursor: pointer;
+            color: var(--primary-color);
+            transition: all 0.3s ease;
+            z-index: 101;
+            outline: none;
         }
+        
+        /* MODIFIED: Center the button when the sidebar is collapsed */
+        .sidebar.collapsed .sidebar-toggle {
+            left: 50%;
+            transform: translateX(-50%);
+            right: auto;
+        }
+
+        .sidebar-toggle:hover {
+            transform: scale(1.1) translateX(-50%);
+            color: var(--primary-dark);
+        }
+        
+        .sidebar:not(.collapsed) .sidebar-toggle:hover {
+             transform: scale(1.1);
+        }
+
 
         .sidebar-header {
             padding: var(--spacing-md);
@@ -255,7 +263,7 @@
             display: flex;
             flex-direction: column;
             background: var(--widget-bg);
-            position: relative; /* For toggle button */
+            position: relative; 
         }
 
         .chat-header {
@@ -281,8 +289,8 @@
             display: flex;
             flex-direction: column;
             gap: 15px;
-            scrollbar-width: thin; /* Firefox */
-            scrollbar-color: var(--primary-color) var(--secondary-bg); /* Firefox */
+            scrollbar-width: thin; 
+            scrollbar-color: var(--primary-color) var(--secondary-bg); 
         }
         .chat-messages::-webkit-scrollbar {
             width: 8px;
@@ -304,10 +312,10 @@
         }
         .message.user {
             margin-left: auto;
-            justify-content: flex-end; /* Align content to the right */
+            justify-content: flex-end; 
         }
         .message.assistant {
-            justify-content: flex-start; /* Align content to the left */
+            justify-content: flex-start; 
         }
 
         .message-content {
@@ -317,9 +325,9 @@
             line-height: 1.5;
             position: relative;
             word-wrap: break-word;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+            box-shadow: 0 2px 8px rgb(248, 247, 247);
             animation: fadeInMessage 0.3s ease-out forwards;
-            min-width: 60px; /* Ensure small messages still look good */
+            min-width: 60px; 
         }
 
         .message.user .message-content {
@@ -339,7 +347,7 @@
             opacity: 0.7;
             margin-top: 5px;
             color: inherit;
-            display: block; /* Ensure it takes full width */
+            display: block; 
         }
         .message.user .message-time { text-align: right; }
         .message.assistant .message-time { text-align: left; }
@@ -366,7 +374,7 @@
         }
         .input-container:focus-within {
             border-color: var(--primary-color);
-            box-shadow: 0 0 0 3px rgba(106, 90, 205, 0.15);
+            box-shadow: 0 0 0 3px rgba(1, 1, 7, 0.15);
         }
 
         .chat-input input {
@@ -377,15 +385,15 @@
             outline: none;
             color: var(--text-color-dark);
             padding: 5px 10px;
-            min-height: 20px; /* Ensure consistent height */
+            min-height: 20px; 
         }
         .chat-input input::placeholder {
-            color: #95a5a6;
+            color: #fafafa;
         }
 
         .upload-button-wrapper {
             position: relative;
-            display: flex; /* Use flex to center icon */
+            display: flex; 
             align-items: center;
             justify-content: center;
             margin-right: 10px;
@@ -396,7 +404,7 @@
         .upload-btn {
             background: none;
             border: none;
-            color: #777;
+            color: #fffcfc;
             font-size: 22px;
             cursor: pointer;
             padding: 5px;
@@ -444,7 +452,7 @@
             border-radius: 20px;
             border-bottom-left-radius: 6px;
             max-width: 100px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+            box-shadow: 0 2px 8px rgba(240, 238, 238, 0.05);
             margin-bottom: 5px;
             align-self: flex-start;
         }
@@ -458,7 +466,7 @@
         .typing-dots span {
             width: 9px;
             height: 9px;
-            background: var(--accent-color); /* Use accent color for dots */
+            background: var(--accent-color); 
             border-radius: 50%;
             animation: typing 1.4s infinite ease-in-out;
         }
@@ -486,7 +494,6 @@
             }
 
             .sidebar {
-                width: 280px;
                 position: fixed;
                 height: 100vh;
                 z-index: 1000;
@@ -495,32 +502,27 @@
             }
             .sidebar.open {
                 transform: translateX(0);
+                width: 280px; /* Ensure it opens to full width on mobile */
             }
 
             .main-content {
                 width: 100%;
             }
 
-            /* Adjust toggle button for mobile */
-            .sidebar-toggle {
-                position: fixed;
-                top: var(--spacing-md);
-                left: var(--spacing-md);
-                background: var(--widget-bg);
-                border-radius: 50%;
-                width: 40px;
-                height: 40px;
+            .sidebar.collapsed {
+                transform: translateX(-100%);
+                width: 0; /* On mobile, collapse fully off-screen */
+            }
+
+            .sidebar.collapsed.open {
+                 transform: translateX(0); /* Ensure open class overrides collapse */
+            }
+
+            /* On mobile, we need a separate toggle button because the sidebar can disappear completely */
+            .main-content .mobile-toggle {
                 display: flex;
-                align-items: center;
-                justify-content: center;
-                box-shadow: var(--shadow-light);
-                z-index: 1001;
-                color: var(--primary-color);
             }
-            .sidebar.open + .main-content .sidebar-toggle {
-                left: 290px; /* Move out of the way when sidebar is open */
-                color: #777; /* Less prominent when sidebar is open */
-            }
+
         }
     </style>
 </head>
@@ -531,7 +533,7 @@
                 <i class="fas fa-bars"></i>
             </button>
             <div class="sidebar-header">
-                <h3>Insight Bot</h3>
+                <h3>Vertex</h3>
                 <div class="user-info" aria-live="polite">Welcome, {{ username }}!</div>
             </div>
 
@@ -540,9 +542,8 @@
                     <i class="fas fa-plus"></i> New Chat
                 </button>
                 
-                <!-- Chat Mode Toggle -->
                 <div class="mode-selector" style="margin-top: 15px;">
-                    <label style="font-size: 0.9em; color: #666; margin-bottom: 8px; display: block;">Chat Mode:</label>
+                    <label style="font-size: 0.9em; color: #66666611; margin-bottom: 8px; display: block;">Chat Mode:</label>
                     <select id="chat-mode" onchange="changeChatMode()" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--widget-bg);">
                         <option value="general">💬 General Chat</option>
                         <option value="rag">📚 RAG (Document Chat)</option>
@@ -575,22 +576,19 @@
         </aside>
 
         <main class="main-content" id="main-content">
-            <button class="sidebar-toggle" onclick="toggleSidebar()" aria-label="Toggle Sidebar">
-                <i class="fas fa-bars"></i>
-            </button>
             <header class="chat-header">
-                <h1 class="chat-title">AI Assistant</h1>
+                <h1 class="chat-title"> AI Assistant</h1>
             </header>
 
             <section class="chat-messages" id="chat-messages" aria-live="polite" aria-atomic="true">
                 <div class="message assistant">
                     <div class="message-content">
-                        Hello! I'm your AI assistant. You can ask me questions, upload documents for analysis, or share images for description. How can I help you today?
+                        Hello! I'm your  AI assistant. You can ask me questions, upload documents for analysis, or share images for description. How can I help you today?
                         <div class="message-time">Just now</div>
                     </div>
                 </div>
                 
-                <div class="typing-indicator" id="typing-indicator" aria-label="AI Assistant is typing">
+                <div class="typing-indicator" id="typing-indicator" aria-label=" AI Assistant is typing">
                     <div class="typing-dots">
                         <span></span>
                         <span></span>
@@ -608,7 +606,6 @@
                         </button>
                     </div>
                     
-                    <!-- GitHub URL Input (hidden by default) -->
                     <div class="github-input-wrapper" id="github-input" style="display: none; flex: 1; margin-right: 10px;">
                         <input type="text" id="githubUrl" placeholder="Enter GitHub repository URL (e.g., username/repo)" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px;">
                         <button onclick="uploadGithubRepo()" style="margin-left: 8px; padding: 8px 12px; background: var(--primary-color); color: white; border: none; border-radius: 6px; cursor: pointer;">
@@ -633,10 +630,24 @@
         // Function to toggle sidebar visibility
         function toggleSidebar() {
             const sidebar = document.getElementById('sidebar');
+            const toggleIcon = document.querySelector('.sidebar-toggle i');
+            
             // For mobile, use the 'open' class
             if (window.innerWidth <= 768) {
-                sidebar.classList.toggle('open');
-                // Optional: add overlay for better mobile UX
+                // This logic needs to handle the fully-collapsing mobile sidebar
+                const isCurrentlyOpen = sidebar.classList.contains('open');
+                if (isCurrentlyOpen) {
+                    sidebar.classList.remove('open');
+                    sidebar.classList.add('collapsed');
+                    toggleIcon.classList.remove('fa-times');
+                    toggleIcon.classList.add('fa-bars');
+                } else {
+                    sidebar.classList.add('open');
+                    sidebar.classList.remove('collapsed');
+                    toggleIcon.classList.remove('fa-bars');
+                    toggleIcon.classList.add('fa-times');
+                }
+
                 if (sidebar.classList.contains('open')) {
                     createOverlay();
                 } else {
@@ -645,6 +656,13 @@
             } else {
                 // For desktop, use the 'collapsed' class
                 sidebar.classList.toggle('collapsed');
+                if (sidebar.classList.contains('collapsed')) {
+                    toggleIcon.classList.remove('fa-times');
+                    toggleIcon.classList.add('fa-bars');
+                } else {
+                    toggleIcon.classList.remove('fa-bars');
+                    toggleIcon.classList.add('fa-times');
+                }
             }
             sidebarOpen = !sidebarOpen;
         }
@@ -934,7 +952,7 @@
                                     <div class="message-time">Just now</div>
                                 </div>
                             </div>
-                            <div class="typing-indicator" id="typing-indicator" aria-label="AI Assistant is typing">
+                            <div class="typing-indicator" id="typing-indicator" aria-label=" AI Assistant is typing">
                                 <div class="typing-dots">
                                     <span></span>
                                     <span></span>
@@ -972,7 +990,7 @@
                         <div class="message-time">Just now</div>
                     </div>
                 </div>
-                <div class="typing-indicator" id="typing-indicator" aria-label="AI Assistant is typing">
+                <div class="typing-indicator" id="typing-indicator" aria-label=" AI Assistant is typing">
                     <div class="typing-dots">
                         <span></span>
                         <span></span>
@@ -1004,16 +1022,23 @@
 
         // Initialize on page load
         document.addEventListener('DOMContentLoaded', function() {
+            const sidebar = document.getElementById('sidebar');
+            const toggleIcon = document.querySelector('.sidebar-toggle i');
             const messageInput = document.getElementById('messageInput');
             messageInput.focus(); // Focus on message input for immediate typing
 
             // Handle initial sidebar state on load
             if (window.innerWidth <= 768) {
-                document.getElementById('sidebar').classList.add('collapsed');
+                sidebar.classList.add('collapsed');
                 sidebarOpen = false;
+                toggleIcon.classList.remove('fa-times');
+                toggleIcon.classList.add('fa-bars');
+
             } else {
-                document.getElementById('sidebar').classList.remove('collapsed');
+                sidebar.classList.remove('collapsed');
                 sidebarOpen = true;
+                toggleIcon.classList.remove('fa-bars');
+                toggleIcon.classList.add('fa-times');
             }
 
             // Event listener for real-time input change to enable/disable send button
@@ -1024,7 +1049,7 @@
             changeChatMode();
             
             // Check LLM status
-            checkLLMStatus();
+            // checkLLMStatus(); // You would uncomment this if the function existed
         });
 
         // Add a listener for window resize to adjust sidebar behavior

@@ -1,13 +1,13 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en"
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Insight Bot - Login</title>
+    <title>Vertex - Login</title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            --primary-color: #667eea;
+            --primary-color: #01030a;
             --secondary-color: #764ba2;
             --accent-color: #5d5dff;
             --text-color: #333;
@@ -29,17 +29,21 @@
 
         body {
             font-family: 'Poppins', sans-serif;
-            background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+            /* Replaced the original gradient with the image and a new gradient overlay */
+            background: linear-gradient(135deg, rgba(105, 110, 134, 0.7) 0%, rgba(68, 86, 105, 0) 100%), url('7458.jpg');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
             min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
-            overflow: hidden; /* Hide overflow for background circles */
+            /* Removed the overflow: hidden; rule as it's no longer necessary without the animated circles */
             position: relative;
         }
 
-        /* Background animated circles */
-        body::before, body::after {
+        /* The animated circles are removed as they are no longer needed with the image background */
+        /* body::before, body::after {
             content: '';
             position: absolute;
             background: rgba(255, 255, 255, 0.08);
@@ -69,7 +73,7 @@
             0% { transform: translateY(0) rotate(0deg); }
             50% { transform: translateY(-20px) rotate(5deg); }
             100% { transform: translateY(0) rotate(0deg); }
-        }
+        } */
 
         .container {
             background: var(--bg-white);
@@ -367,7 +371,7 @@
     <div class="container">
         <div class="header">
             <div class="logo">🤖</div>
-            <div class="title">Insight Bot</div>
+            <div class="title">Vertex</div>
             <div class="subtitle">Your intelligent assistant</div>
         </div>
 
