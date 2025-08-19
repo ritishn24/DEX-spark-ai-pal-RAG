@@ -112,7 +112,7 @@ A comprehensive AI-powered chat application with multi-modal capabilities includ
 ## Architecture Overview
 
 ```
-ai-chat-application/
+CHATTY-SPARK-AI-PAL RAG/
 ├── app.py                 # Main Flask application
 ├── requirements.txt       # Python dependencies
 ├── Dockerfile            # Docker configuration
